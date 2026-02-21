@@ -78,6 +78,17 @@ export default function Dashboard() {
         }));
     };
 
+    const handleToggleNoteCheck = (orderId: string) => {
+        if (!activeListId) return;
+        setLists(prev => prev.map(list => {
+            if (list.id !== activeListId) return list;
+            return {
+                ...list,
+                orders: list.orders.map((o: Order) => o.orderId === orderId ? { ...o, noteChecked: !o.noteChecked } : o)
+            };
+        }));
+    };
+
     const handleDeleteList = (e: React.MouseEvent, id: string) => {
         e.stopPropagation();
         if (confirm('Delete this list?')) {
@@ -309,7 +320,7 @@ export default function Dashboard() {
                             </div>
                         </div>
                     ) : (
-                        <div className="max-w-4xl mx-auto space-y-4">
+                        <div className="max-w-5xl mx-auto space-y-4">
                             {/* List Header for Print */}
                             <div className="hidden print:block mb-8 border-b pb-4">
                                 <h1 className="text-2xl font-bold">{activeList.name}</h1>
@@ -326,6 +337,7 @@ export default function Dashboard() {
                                         order={order}
                                         index={i}
                                         onTogglePack={handleTogglePack}
+                                        onToggleNoteCheck={handleToggleNoteCheck}
                                     />
                                 ))
                             )}

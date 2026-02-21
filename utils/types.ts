@@ -23,6 +23,7 @@ export interface Order {
   // Metadata for the UI
   packed: boolean;
   hasWarning: boolean; // if note is present or status is unpaid
+  noteChecked?: boolean; // NEW: track if the packer has read/acknowledged the note
 }
 
 export interface ParsedData {
