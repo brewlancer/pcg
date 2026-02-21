@@ -24,6 +24,11 @@ export interface Order {
   packed: boolean;
   hasWarning: boolean; // if note is present or status is unpaid
   noteChecked?: boolean; // NEW: track if the packer has read/acknowledged the note
+
+  // Workflow enhancements
+  productionNote?: string; // Notes added for production
+  packingStatus?: 'pending' | 'ready_to_pack' | 'packed' | 'shipped' | 'partial';
+  missingItemsNote?: string; // Detail of what is missing if partial
 }
 
 export interface ParsedData {

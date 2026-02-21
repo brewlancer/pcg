@@ -5,7 +5,7 @@ import { parseExcel } from '../utils/excelParser';
 import { Order, OrderList, ParsedData, OrderItem } from '../utils/types';
 import { FileUpload } from './FileUpload';
 import { OrderRow } from './OrderRow';
-import { Printer, RefreshCw, Search, Box, Plus, Trash2, Edit2, FileText, ChevronLeft, ChevronRight, Menu, LogOut, Package, ClipboardList, CheckCircle2, Circle } from 'lucide-react';
+import { Printer, RefreshCw, Search, Box, Plus, Trash2, Edit2, FileText, ChevronLeft, ChevronRight, Menu, LogOut, Package, ClipboardList, CheckCircle2, Circle, X, TrendingUp, Clock } from 'lucide-react';
 import { logout } from '../app/actions/auth';
 import { clsx } from 'clsx';
 
@@ -14,11 +14,14 @@ export default function Dashboard() {
     const [activeListId, setActiveListId] = useState<string | null>(null);
 
     const [searchQuery, setSearchQuery] = useState('');
-    const [filterMode, setFilterMode] = useState<'all' | 'packed' | 'unpacked'>('all');
+    const [activeTab, setActiveTab] = useState<'all' | 'manage' | 'packing' | 'packed' | 'shipped'>('manage');
     const [selectedSku, setSelectedSku] = useState<string>('all');
     const [isMounted, setIsMounted] = useState(false);
     const [editingListId, setEditingListId] = useState<string | null>(null);
     const [editName, setEditName] = useState('');
+
+    // For Production print view custom items
+    const [customSummaryItems, setCustomSummaryItems] = useState<{ sku: string, count: number, id: string }[]>([]);
 
     // Layout State
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -73,7 +76,23 @@ export default function Dashboard() {
             if (list.id !== activeListId) return list;
             return {
                 ...list,
-                orders: list.orders.map((o: Order) => o.orderId === orderId ? { ...o, packed: !o.packed } : o)
+                orders: list.orders.map((o: Order) => {
+                    if (o.orderId !== orderId) return o;
+
+                    let newStatus = o.packingStatus || 'pending';
+
+                    if (newStatus === 'pending') {
+                        newStatus = 'ready_to_pack'; // from manage -> wait to pack
+                    } else if (newStatus === 'ready_to_pack') {
+                        newStatus = 'packed'; // from wait to pack -> packed (wait to ship)
+                    } else if (newStatus === 'packed') {
+                        newStatus = 'shipped'; // from packed -> shipped
+                    } else if (newStatus === 'shipped') {
+                        newStatus = 'pending'; // reset cycle (or they can click to undo)
+                    }
+
+                    return { ...o, packingStatus: newStatus as Order['packingStatus'] };
+                })
             };
         }));
     };
@@ -84,7 +103,55 @@ export default function Dashboard() {
             if (list.id !== activeListId) return list;
             return {
                 ...list,
-                orders: list.orders.map((o: Order) => o.orderId === orderId ? { ...o, noteChecked: !o.noteChecked } : o)
+                orders: list.orders.map((o: Order) => o.orderId === orderId ? {
+                    ...o,
+                    noteChecked: !o.noteChecked
+                } : o)
+            };
+        }));
+    };
+
+    const handleSaveProductionNote = (orderId: string, note: string) => {
+        if (!activeListId) return;
+        setLists(prev => prev.map(list => {
+            if (list.id !== activeListId) return list;
+            return {
+                ...list,
+                orders: list.orders.map((o: Order) => o.orderId === orderId ? { ...o, productionNote: note } : o)
+            };
+        }));
+    };
+
+    const handleDeleteMenuItem = (skuToDelete: string) => {
+        if (!activeListId || !confirm(`ยืนยันการลบเมนู "${skuToDelete}" ใช่หรือไม่? (จะลบออกจากสรุปเท่านั้น)`)) return;
+        setLists(prev => prev.map(list => {
+            if (list.id !== activeListId) return list;
+            const newSummary = { ...list.summary };
+            delete newSummary[skuToDelete];
+            return {
+                ...list,
+                summary: newSummary
+            };
+        }));
+    };
+
+    const handleMarkPartial = (orderId: string, missingNote: string) => {
+        if (!activeListId) return;
+        setLists(prev => prev.map(list => {
+            if (list.id !== activeListId) return list;
+            return {
+                ...list,
+                orders: list.orders.map((o: Order) => {
+                    if (o.orderId !== orderId) return o;
+                    // If it's already partial, clicking it might clear it, or the modal overwrites it
+                    const isCurrentlyPartial = o.packingStatus === 'partial';
+                    return {
+                        ...o,
+                        packingStatus: isCurrentlyPartial && !missingNote ? 'pending' : 'partial',
+                        missingItemsNote: missingNote,
+                        packed: false // ensure not marked fully packed
+                    };
+                })
             };
         }));
     };
@@ -99,6 +166,11 @@ export default function Dashboard() {
             }
         }
     };
+
+    // Reset custom items when changing lists
+    React.useEffect(() => {
+        setCustomSummaryItems([]);
+    }, [activeListId]);
 
     const startEditing = (e: React.MouseEvent, list: OrderList) => {
         e.stopPropagation();
@@ -133,12 +205,16 @@ export default function Dashboard() {
 
             if (!matchesSearch) return false;
 
-            // Filter logic
-            if (filterMode === 'packed') return order.packed;
-            if (filterMode === 'unpacked') return !order.packed;
+            const status = order.packingStatus || 'pending'; // 'pending' | 'ready_to_pack' | 'packed' | 'shipped'
+
+            if (activeTab === 'manage') return status === 'pending';
+            if (activeTab === 'packing') return status === 'ready_to_pack';
+            if (activeTab === 'packed') return status === 'packed';
+            if (activeTab === 'shipped') return status === 'shipped';
+
             return true;
         });
-    }, [activeList, searchQuery, filterMode, selectedSku]);
+    }, [activeList, searchQuery, activeTab, selectedSku]);
 
     const packedCount = activeList ? activeList.orders.filter((o: Order) => o.packed).length : 0;
     const progress = activeList && activeList.orders.length > 0 ? (packedCount / activeList.orders.length) * 100 : 0;
@@ -261,56 +337,83 @@ export default function Dashboard() {
                 {/* Top Bar */}
                 <header className="bg-white border-b border-gray-200 p-4 flex flex-col md:flex-row justify-between items-center gap-4 print:hidden shrink-0">
                     {activeList && (
-                        <div className="flex items-center gap-4 flex-1 justify-between w-full">
-                            <div className="relative w-full max-w-md">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                                <input
-                                    type="text"
-                                    placeholder="ค้นหา รหัสออเดอร์, ชื่อลูกค้า..."
-                                    value={searchQuery}
-                                    onChange={e => setSearchQuery(e.target.value)}
-                                    className="w-full pl-9 pr-4 py-2 border rounded-md text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                                />
+                        <div className="flex flex-col gap-4 w-full">
+                            <div className="flex items-center gap-2 overflow-x-auto pb-1 pb-md-0 scrollbar-hide">
+                                <button
+                                    onClick={() => setActiveTab('all')}
+                                    className={clsx("px-4 py-2 rounded-full text-xs font-bold transition-all whitespace-nowrap", activeTab === 'all' ? "bg-black text-white shadow-sm" : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50")}
+                                >
+                                    ทั้งหมด
+                                </button>
+                                <button
+                                    onClick={() => setActiveTab('manage')}
+                                    className={clsx("px-4 py-2 rounded-full text-xs font-bold transition-all whitespace-nowrap", activeTab === 'manage' ? "bg-black text-white shadow-sm" : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50")}
+                                >
+                                    จัดการออเดอร์
+                                </button>
+                                <button
+                                    onClick={() => setActiveTab('packing')}
+                                    className={clsx("px-4 py-2 rounded-full text-xs font-bold transition-all whitespace-nowrap", activeTab === 'packing' ? "bg-black text-white shadow-sm" : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50")}
+                                >
+                                    รอแพ็ค
+                                </button>
+                                <button
+                                    onClick={() => setActiveTab('packed')}
+                                    className={clsx("px-4 py-2 rounded-full text-xs font-bold transition-all whitespace-nowrap", activeTab === 'packed' ? "bg-black text-white shadow-sm" : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50")}
+                                >
+                                    รอส่ง
+                                </button>
+                                <button
+                                    onClick={() => setActiveTab('shipped')}
+                                    className={clsx("px-4 py-2 rounded-full text-xs font-bold transition-all whitespace-nowrap", activeTab === 'shipped' ? "bg-black text-white shadow-sm" : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50")}
+                                >
+                                    ส่งแล้ว
+                                </button>
                             </div>
 
-                            <div className="flex items-center gap-3">
-                                {/* SKU Filter Mobile/Desktop */}
-                                <select
-                                    value={selectedSku}
-                                    onChange={(e) => setSelectedSku(e.target.value)}
-                                    className="px-2 py-1.5 rounded text-sm border bg-white max-w-[140px]"
-                                >
-                                    <option value="all">สินค้าทั้งหมด</option>
-                                    {activeList && Object.keys(activeList.summary).map(sku => (
-                                        <option key={sku} value={sku}>{sku}</option>
-                                    ))}
-                                </select>
-
-                                <div className="flex bg-gray-100 p-1 rounded-lg">
-                                    <button
-                                        onClick={() => setFilterMode('all')}
-                                        className={clsx("px-3 py-1 rounded text-xs font-medium transition-all", filterMode === 'all' ? "bg-white shadow text-blue-600" : "text-gray-500 hover:text-gray-700")}
-                                    >
-                                        ทั้งหมด
-                                    </button>
-                                    <button
-                                        onClick={() => setFilterMode('unpacked')}
-                                        className={clsx("px-3 py-1 rounded text-xs font-medium transition-all", filterMode === 'unpacked' ? "bg-white shadow text-yellow-600" : "text-gray-500 hover:text-gray-700")}
-                                    >
-                                        รอแพ็ค
-                                    </button>
+                            <div className="flex items-center gap-4 flex-1 justify-between w-full">
+                                <div className="relative w-full max-w-md">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                                    <input
+                                        type="text"
+                                        placeholder="ค้นหา รหัสออเดอร์, ชื่อลูกค้า..."
+                                        value={searchQuery}
+                                        onChange={e => setSearchQuery(e.target.value)}
+                                        className="w-full pl-9 pr-4 py-2 border rounded-md text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                    />
                                 </div>
 
-                                <button onClick={() => window.print()} className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg border border-gray-200 shadow-sm" title="Print">
-                                    <Printer size={20} />
-                                </button>
+                                <div className="flex items-center gap-3">
+                                    {/* SKU Filter Mobile/Desktop */}
+                                    <select
+                                        value={selectedSku}
+                                        onChange={(e) => setSelectedSku(e.target.value)}
+                                        className="px-2 py-1.5 rounded text-sm border bg-white max-w-[140px]"
+                                    >
+                                        <option value="all">สินค้าทั้งหมด</option>
+                                        {activeList && Object.keys(activeList.summary).map(sku => (
+                                            <option key={sku} value={sku}>{sku}</option>
+                                        ))}
+                                    </select>
+
+                                    <div className="flex bg-gray-100 p-1 rounded-lg">
+                                        {/* Action Buttons specific to tabs can go here later */}
+                                    </div>
+
+                                    <button onClick={() => window.print()} className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg border border-gray-200 shadow-sm" title="Print">
+                                        <Printer size={20} />
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     )}
                 </header>
 
                 {/* Content Scroll Area */}
-                <div className="flex-1 overflow-y-auto p-4 md:p-8 bg-gray-50 print:bg-white print:p-0 print:overflow-visible">
+                <div className={clsx(
+                    "flex-1 overflow-y-auto p-3 md:p-5 lg:p-6 bg-gray-50 print:bg-white print:p-0 print:overflow-visible",
+                    activeTab === 'manage' ? "print:hidden" : "print:block"
+                )}>
                     {!activeList ? (
                         <div className="h-full flex flex-col items-center justify-center text-gray-400 space-y-4">
                             <div className="p-12 bg-white rounded-2xl shadow-sm border border-dashed border-gray-200 text-center">
@@ -320,7 +423,7 @@ export default function Dashboard() {
                             </div>
                         </div>
                     ) : (
-                        <div className="max-w-5xl mx-auto space-y-4">
+                        <div className="max-w-4xl mx-auto space-y-2.5">
                             {/* List Header for Print */}
                             <div className="hidden print:block mb-8 border-b pb-4">
                                 <h1 className="text-2xl font-bold">{activeList.name}</h1>
@@ -338,6 +441,8 @@ export default function Dashboard() {
                                         index={i}
                                         onTogglePack={handleTogglePack}
                                         onToggleNoteCheck={handleToggleNoteCheck}
+                                        onSaveProductionNote={handleSaveProductionNote}
+                                        onMarkPartial={handleMarkPartial}
                                     />
                                 ))
                             )}
@@ -348,60 +453,136 @@ export default function Dashboard() {
 
             {/* RIGHT Sidebar (Summary) */}
             {activeList && (
-                <aside className="w-80 bg-white border-l border-gray-200 p-4 print:hidden sticky top-0 h-screen overflow-y-auto hidden xl:block flex-shrink-0">
-
+                <aside className={clsx(
+                    "bg-white border-l border-gray-200 p-4 sticky top-0 h-screen overflow-y-auto hidden xl:block flex-shrink-0 w-96",
+                    activeTab === 'manage' ? "print:block print:w-full print:border-none print:!h-auto print:overflow-visible print:px-8 print:py-0" : "print:hidden"
+                )}>
                     <div className="mb-8">
-                        <h2 className="font-bold text-lg text-gray-800 mb-4 flex items-center gap-2">
-                            <ClipboardList className="text-blue-600" size={20} />
-                            ภาพรวมรายการ
-                        </h2>
+                        {activeTab === 'manage' && (
+                            <div className="hidden print:block mb-8 border-b pb-4">
+                                <h1 className="text-2xl font-bold">ใบสั่งผลิต: {activeList.name}</h1>
+                                <p className="text-gray-500 text-sm">ปริ้นเมื่อ: {new Date().toLocaleString()}</p>
+                            </div>
+                        )}
 
-                        <div className="grid grid-cols-2 gap-3 mb-6">
-                            <div className="bg-blue-50/50 border border-blue-100 p-3 rounded-xl flex flex-col justify-center">
-                                <span className="text-xs text-blue-600 font-medium mb-1 flex items-center gap-1.5"><Box size={14} /> ออเดอร์ทั้งหมด</span>
-                                <span className="text-2xl font-bold text-blue-900">{activeList.orders.length}</span>
-                            </div>
-                            <div className="bg-purple-50/50 border border-purple-100 p-3 rounded-xl flex flex-col justify-center">
-                                <span className="text-xs text-purple-600 font-medium mb-1 flex items-center gap-1.5"><Package size={14} /> สินค้าทั้งหมด</span>
-                                <span className="text-2xl font-bold text-purple-900">{totalUnitsCount}</span>
-                            </div>
-                            <div className="bg-green-50/50 border border-green-100 p-3 rounded-xl flex flex-col justify-center">
-                                <span className="text-xs text-green-600 font-medium mb-1 flex items-center gap-1.5"><CheckCircle2 size={14} /> แพ็คแล้ว</span>
-                                <span className="text-2xl font-bold text-green-900">{packedCount}</span>
-                            </div>
-                            <div className="bg-orange-50/50 border border-orange-100 p-3 rounded-xl flex flex-col justify-center">
-                                <span className="text-xs text-orange-600 font-medium mb-1 flex items-center gap-1.5"><Circle size={14} /> รอแพ็ค</span>
-                                <span className="text-2xl font-bold text-orange-900">{activeList.orders.length - packedCount}</span>
-                            </div>
-                        </div>
-
-                        <div className="mb-2 flex justify-between text-sm font-medium text-gray-600">
-                            <span>ความคืบหน้า</span>
-                            <span>{Math.round(progress)}%</span>
-                        </div>
-                        <div className="bg-gray-100 rounded-full h-3 overflow-hidden border border-gray-200 mb-2">
-                            <div className="bg-blue-500 h-full transition-all duration-500" style={{ width: `${progress}%` }} />
-                        </div>
-                    </div>
-
-                    <div>
-                        <h3 className="font-bold text-gray-700 flex items-center gap-2 mb-3 pb-2 border-b border-gray-100">
-                            <Box size={18} className="text-blue-500" /> สรุปจำนวนสินค้า (SKU)
+                        <h3 className="font-bold text-gray-900 text-lg flex items-center gap-2 mb-4 pb-2 border-b-2 border-zinc-900 print:hidden">
+                            <Box size={22} className="text-black" /> สรุปจำนวนสินค้า (SKU)
                         </h3>
-                        <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
-                            <ul className="text-sm space-y-2.5">
-                                {Object.entries(activeList.summary).map(([sku, count]) => (
-                                    <li key={sku} className="flex justify-between items-start group">
-                                        <span className="text-gray-600 leading-tight flex-1 pr-2 group-hover:text-gray-900 transition-colors">{sku || 'ไม่ระบุ'}</span>
-                                        <span className="font-mono font-bold bg-white border border-gray-200 px-2 py-0.5 rounded-md text-gray-800 shadow-sm">{String(count)}</span>
+                        {/* The PDF/Print trigger for Production Tab */}
+                        {activeTab === 'manage' && (
+                            <div className="mb-4">
+                                <button onClick={() => window.print()} className="w-full bg-black text-white hover:bg-gray-800 font-bold py-3 rounded-xl flex items-center justify-center gap-2 shadow-sm transition-colors print:hidden">
+                                    <Printer size={18} /> ปริ้นใบผลิต
+                                </button>
+                                <p className="text-center text-[10px] text-gray-400 mt-2 font-medium print:hidden">เตรียมสรุปใบสั่งผลิตสำหรับฝ่ายผลิต</p>
+                            </div>
+                        )}
+
+                        <div className="bg-zinc-50 border border-zinc-200 rounded-2xl p-4 shadow-inner">
+                            <ul className="text-sm space-y-3">
+                                {Object.entries(activeList.summary).map(([sku, count], idx) => (
+                                    <li key={`auto-${sku}-${idx}`} className="flex justify-between items-center group relative">
+                                        <button
+                                            onClick={() => handleDeleteMenuItem(sku)}
+                                            className="absolute -left-6 text-red-500 hover:text-red-700 opacity-0 group-hover:opacity-100 transition-opacity print:hidden"
+                                            title="ลบเมนูนี้"
+                                        >
+                                            <X size={14} />
+                                        </button>
+                                        <div className="flex-1 pr-3">
+                                            <input
+                                                className="bg-transparent border-b border-transparent hover:border-gray-300 focus:border-black focus:outline-none w-full text-zinc-600 font-bold leading-tight group-hover:text-black transition-colors print:border-none print:text-lg print:text-black"
+                                                defaultValue={sku || 'ไม่ระบุ'}
+                                                onChange={(e) => {
+                                                    // Update logic for SKU renaming if desired, but for now just visual
+                                                }}
+                                            />
+                                        </div>
+                                        <div className="min-w-[60px] flex justify-end">
+                                            <span className="font-black text-lg text-zinc-900 bg-white border-2 border-zinc-200 px-3 py-1 rounded-xl shadow-sm min-w-[50px] text-center print:border-none print:shadow-none print:text-xl">
+                                                {count}
+                                            </span>
+                                        </div>
+                                    </li>
+                                ))}
+
+                                {customSummaryItems.map((item, idx) => (
+                                    <li key={item.id} className="flex justify-between items-center group relative">
+                                        <button
+                                            onClick={() => setCustomSummaryItems(prev => prev.filter(p => p.id !== item.id))}
+                                            className="absolute -left-6 text-red-500 hover:text-red-700 opacity-0 group-hover:opacity-100 transition-opacity print:hidden"
+                                            title="ลบ"
+                                        >
+                                            <X size={14} />
+                                        </button>
+                                        <div className="flex-1 pr-3">
+                                            <input
+                                                className="bg-zinc-100 border-b border-zinc-300 focus:border-black focus:outline-none w-full text-zinc-800 font-bold leading-tight transition-colors rounded-sm px-2 py-1 print:bg-transparent print:border-none print:px-0 print:text-lg print:text-black"
+                                                placeholder="ชื่อเมนูพิเศษ..."
+                                                value={item.sku}
+                                                onChange={(e) => {
+                                                    const val = e.target.value;
+                                                    setCustomSummaryItems(prev => prev.map(p => p.id === item.id ? { ...p, sku: val } : p));
+                                                }}
+                                            />
+                                        </div>
+                                        <div className="min-w-[60px] flex justify-end">
+                                            <input
+                                                className="font-black bg-zinc-100 border-2 border-zinc-300 px-2 py-1 rounded-xl text-zinc-900 w-16 text-center focus:outline-none focus:border-black print:bg-transparent print:border-none print:text-xl"
+                                                value={item.count}
+                                                onChange={(e) => {
+                                                    const val = parseInt(e.target.value) || 0;
+                                                    setCustomSummaryItems(prev => prev.map(p => p.id === item.id ? { ...p, count: val } : p));
+                                                }}
+                                                type="number"
+                                            />
+                                        </div>
                                     </li>
                                 ))}
                             </ul>
+
+                            {/* Add Custom Item for Print */}
+                            {activeTab === 'manage' && (
+                                <button
+                                    onClick={() => setCustomSummaryItems(prev => [...prev, { sku: '', count: 1, id: Date.now().toString() }])}
+                                    className="mt-4 w-full border border-dashed border-gray-300 rounded-lg py-2 text-xs font-bold text-gray-500 hover:text-black hover:bg-gray-100 transition-colors flex items-center justify-center gap-1 print:hidden"
+                                >
+                                    <Plus size={14} /> เพิ่มเมนูพิเศษ
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="mb-8">
+                        <h2 className="font-bold text-sm text-zinc-400 uppercase tracking-widest mb-4 flex items-center gap-2 print:mt-10 print:pt-6 print:border-t print:border-zinc-100 print:text-black">
+                            <ClipboardList size={16} /> ภาพรวมรายการ
+                        </h2>
+
+                        <div className="grid grid-cols-2 gap-3 mb-6 print:grid-cols-2 print:gap-8">
+                            <div className="bg-zinc-50 border border-zinc-100 p-4 rounded-2xl flex flex-col justify-center print:bg-white print:border-2 print:border-zinc-900">
+                                <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-tighter mb-1 flex items-center gap-1.5 print:text-xs print:text-black"><Box size={12} /> จำนวนออเดอร์</span>
+                                <span className="text-2xl font-black text-zinc-900 print:text-4xl">{activeList.orders.length}</span>
+                            </div>
+                            <div className="bg-zinc-50 border border-zinc-100 p-4 rounded-2xl flex flex-col justify-center print:bg-white print:border-2 print:border-zinc-900">
+                                <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-tighter mb-1 flex items-center gap-1.5 print:text-xs print:text-black"><Package size={12} /> จำนวนชิ้นรวม</span>
+                                <span className="text-2xl font-black text-zinc-900 print:text-4xl">{totalUnitsCount}</span>
+                            </div>
+                            <div className="bg-white border-2 border-zinc-100 p-4 rounded-2xl flex flex-col justify-center shadow-sm print:hidden">
+                                <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-tighter mb-1 flex items-center gap-1.5"><TrendingUp size={12} /> ความคืบหน้า</span>
+                                <div className="flex items-center gap-3">
+                                    <div className="flex-1 h-2 bg-zinc-100 rounded-full overflow-hidden">
+                                        <div
+                                            className="h-full bg-black transition-all duration-500 ease-out"
+                                            style={{ width: `${progress}%` }}
+                                        />
+                                    </div>
+                                    <span className="text-sm font-black text-zinc-900">{Math.round(progress)}%</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </aside>
             )}
-
         </div>
     );
-}
+};

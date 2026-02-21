@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Order } from '../utils/types';
-import { Check, AlertTriangle, ChevronDown, ChevronUp, Truck, User, Info, CheckSquare, Square } from 'lucide-react';
+import { Check, AlertCircle, Phone, MapPin, ListOrdered, X, Edit3, AlertTriangle } from 'lucide-react';
 import { clsx } from 'clsx';
 
 interface OrderRowProps {
@@ -9,195 +9,293 @@ interface OrderRowProps {
     onTogglePack: (orderId: string) => void;
     onToggleNoteCheck: (orderId: string) => void;
     index: number;
+    onSaveProductionNote: (orderId: string, note: string) => void;
+    onMarkPartial: (orderId: string, missingNote: string) => void;
 }
 
-export const OrderRow: React.FC<OrderRowProps> = ({ order, onTogglePack, onToggleNoteCheck, index }) => {
-    const [isExpanded, setIsExpanded] = useState(false);
-    const isPacked = order.packed;
+export const OrderRow: React.FC<OrderRowProps> = ({ order, onTogglePack, onToggleNoteCheck, index, onSaveProductionNote, onMarkPartial }) => {
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [prodNote, setProdNote] = useState(order.productionNote || '');
+    const [missingNote, setMissingNote] = useState(order.missingItemsNote || '');
+    const [showMissingInput, setShowMissingInput] = useState(false);
+
+    const status = order.packingStatus || 'pending';
+    const isPacked = status === 'packed' || status === 'shipped';
     const isNoteChecked = order.noteChecked;
-    const hasSpecialNote = !!order.note;
+    const hasNote = !!order.note;
+    const isPartial = status === 'partial';
+
+    // Sync state if order props change
+    React.useEffect(() => {
+        setProdNote(order.productionNote || '');
+        setMissingNote(order.missingItemsNote || '');
+    }, [order.productionNote, order.missingItemsNote]);
 
     // Prevent row click when interacting with action buttons
     const handleRowClick = (e: React.MouseEvent) => {
-        // Find if we clicked on an interactive element by looking up the DOM tree
         const target = e.target as HTMLElement;
-        if (target.closest('button') || target.closest('input')) {
-            return;
-        }
-        setIsExpanded(!isExpanded);
+        if (target.closest('button') || target.closest('input') || target.closest('textarea')) return;
+        setIsModalOpen(true);
     };
 
     return (
-        <div
-            onClick={handleRowClick}
-            className={clsx(
-                "group relative bg-white border rounded-2xl transition-all duration-300 ease-in-out overflow-hidden flex flex-col md:flex-row cursor-pointer select-none",
-                isPacked
-                    ? "border-green-100 shadow-sm opacity-60"
-                    : "border-gray-100 shadow-sm hover:shadow-lg hover:border-blue-200 hover:-translate-y-0.5",
-                order.hasWarning && !isPacked && !isNoteChecked && "ring-1 ring-red-400 border-red-100"
-            )}
-        >
-            {/* Selection / Status Indicator Stripe (Left) */}
+        <>
             <div
+                onClick={handleRowClick}
                 className={clsx(
-                    "absolute left-0 top-0 bottom-0 w-1.5 transition-colors",
-                    isPacked ? "bg-green-500" : (order.hasWarning && !isNoteChecked ? "bg-red-500" : "bg-blue-500")
+                    "group bg-white border border-gray-200 rounded-2xl cursor-pointer transition-all duration-300 overflow-hidden",
+                    status !== 'shipped' && "hover:border-gray-400 hover:shadow-lg hover:-translate-y-0.5"
                 )}
-            />
+            >
+                <div className="flex flex-col md:flex-row items-stretch">
 
-            <div className="flex-grow p-4 pl-6 flex flex-col md:flex-row gap-4 items-start md:items-center">
+                    {/* Status Indicator Bar */}
+                    <div className={clsx(
+                        "w-full h-1 md:w-1.5 md:h-auto flex-shrink-0 transition-colors",
+                        isPacked ? "bg-black" : (isNoteChecked || !hasNote ? "bg-blue-500" : "bg-red-500")
+                    )} />
 
-                {/* Checkbox Action For Packing */}
-                <div className="absolute top-4 right-4 md:static md:order-first">
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onTogglePack(order.orderId);
-                        }}
-                        className={clsx(
-                            "w-12 h-12 rounded-xl flex items-center justify-center transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-opacity-50",
-                            isPacked
-                                ? "bg-green-100 text-green-600 focus:ring-green-200"
-                                : "bg-gray-100 text-gray-400 hover:bg-blue-100 hover:text-blue-600 focus:ring-blue-100",
-                            hasSpecialNote && !isNoteChecked && !isPacked && "opacity-50 cursor-not-allowed" // Optional visual cue that note should be checked first, though we don't block it strictly.
-                        )}
-                        title={hasSpecialNote && !isNoteChecked ? "กรุณาเช็คหมายเหตุก่อน" : "แพ็คของ"}
+                    <div className="p-4 sm:p-5 flex flex-col md:flex-row gap-5 items-start md:items-center w-full">
+
+                        {/* Checkbox (Minimalist) */}
+                        <div className="absolute top-4 right-4 md:static md:flex-shrink-0">
+                            <button
+                                onClick={(e) => { e.stopPropagation(); if (status !== 'shipped') onTogglePack(order.orderId); }}
+                                disabled={status === 'shipped'}
+                                className={clsx(
+                                    "w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all focus:outline-none",
+                                    (status === 'packed' || status === 'shipped') ? "bg-black border-black text-white" : "bg-white border-gray-300 text-transparent hover:border-black hover:text-black hover:shadow-md",
+                                    status === 'shipped' && "cursor-default"
+                                )}
+                                title={status === 'shipped' ? "ส่งเรียบร้อยแล้ว" : (status === 'packed' ? "แพ็คแล้ว (ยกเลิกการแพ็ค)" : "กดเพื่อยืนยันว่าแพ็คแล้ว")}
+                            >
+                                <Check size={20} strokeWidth={(status === 'packed' || status === 'shipped') ? 3 : 2} className={clsx("transition-transform", (status === 'packed' || status === 'shipped') ? "opacity-100 scale-100" : "opacity-0 scale-50 group-hover:opacity-100 group-hover:scale-100")} />
+                            </button>
+                        </div>
+
+                        {/* Name & Phone */}
+                        <div className="flex-grow w-full md:w-3/12 md:pr-4">
+                            <h3 className="font-bold text-gray-900 text-lg sm:text-xl tracking-tight leading-tight">
+                                {order.customerName}
+                            </h3>
+                            {order.phoneNumber && (
+                                <div className="mt-1.5 flex items-center text-gray-500 font-medium text-sm gap-1.5">
+                                    <Phone size={14} />
+                                    <span>{order.phoneNumber}</span>
+                                </div>
+                            )}
+
+                            {/* Badges */}
+                            <div className="mt-2 flex flex-col gap-1.5 items-start">
+                                {order.productionNote && (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50 border border-blue-100 text-blue-700 text-[10px] font-bold">
+                                        <Edit3 size={10} /> โน้ตผลิต: {order.productionNote}
+                                    </span>
+                                )}
+                                {isPartial && order.missingItemsNote && (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 border border-amber-200 text-amber-700 text-[10px] font-bold">
+                                        <AlertTriangle size={10} /> ของขาด: {order.missingItemsNote}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Items (Menu) */}
+                        <div className="flex-grow w-full md:w-3/12">
+                            <div className="space-y-1.5">
+                                {order.items.map(item => (
+                                    <div key={item.id} className="text-sm flex items-start gap-2.5">
+                                        <span className={clsx("font-bold min-w-[24px] text-right", isPacked ? "text-gray-400" : "text-gray-900")}>
+                                            {item.quantity}x
+                                        </span>
+                                        <span className={clsx("font-medium leading-snug", isPacked ? "text-gray-400" : "text-gray-700")}>
+                                            {item.productName}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Note Box */}
+                        <div className="flex-grow w-full md:w-6/12 md:pl-4">
+                            {hasNote ? (
+                                <div className={clsx(
+                                    "p-4 rounded-xl border text-sm transition-colors h-full flex flex-col justify-center",
+                                    isNoteChecked ? "bg-zinc-50 border-zinc-200 text-zinc-500" : "bg-red-50 border-red-200 text-red-900"
+                                )}>
+                                    <div className="flex items-center justify-between gap-2 mb-2">
+                                        <span className={clsx("font-extrabold flex items-center gap-1.5 text-[11px] uppercase tracking-wider", isNoteChecked ? "text-zinc-500" : "text-red-600")}>
+                                            <AlertCircle size={14} /> หมายเหตุ
+                                        </span>
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); onToggleNoteCheck(order.orderId); }}
+                                            className={clsx(
+                                                "text-[10px] font-bold uppercase tracking-wide px-2.5 py-1.5 rounded-lg transition-all active:scale-95",
+                                                isNoteChecked ? "bg-zinc-200 text-zinc-600 hover:bg-zinc-300" : "bg-red-600 text-white shadow-md hover:bg-red-700"
+                                            )}
+                                        >
+                                            {isNoteChecked ? "รับทราบแล้ว" : "ติ๊กเพื่อรับทราบ"}
+                                        </button>
+                                    </div>
+                                    <p className="font-bold leading-relaxed break-words text-base">
+                                        {order.note}
+                                    </p>
+                                </div>
+                            ) : (
+                                <div className="h-full border border-dashed border-gray-200 rounded-xl p-4 flex items-center justify-center text-gray-400 bg-gray-50/50">
+                                    <span className="text-[10px] font-bold uppercase tracking-widest">ไม่มีหมายเหตุ</span>
+                                </div>
+                            )}
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+            {/* Premium Modal */}
+            {
+                isModalOpen && (
+                    <div
+                        className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-zinc-900/60 backdrop-blur-sm animate-in fade-in duration-200"
+                        onClick={(e) => { e.stopPropagation(); setIsModalOpen(false); }}
                     >
-                        <Check size={24} strokeWidth={isPacked ? 3 : 2} className={clsx("transition-transform", isPacked ? "scale-110" : "scale-100")} />
-                    </button>
-                </div>
-
-                {/* Main Info (Customer, Items, Tracking) */}
-                <div className="flex-grow min-w-0 w-full md:w-5/12 pr-4">
-                    {/* Header: Customer & Tags */}
-                    <div className="flex items-center gap-2 mb-2">
-                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-blue-50 text-blue-600 flex-shrink-0">
-                            <User size={14} />
-                        </span>
-                        <h3 className={clsx("text-lg font-bold text-gray-800 truncate", isPacked && "line-through text-gray-500")}>
-                            {order.customerName}
-                        </h3>
-                    </div>
-
-                    <div className="flex items-center gap-2 mb-3 flex-wrap">
-                        <span className="text-xs font-mono text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100">
-                            #{order.orderId}
-                        </span>
-                        {order.channel && (
-                            <span className="text-[10px] font-bold tracking-wider uppercase bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full">
-                                {order.channel}
-                            </span>
-                        )}
-                        {order.trackingNo && (
-                            <div className="flex items-center gap-1.5 px-2 py-0.5 bg-blue-50/50 rounded-md border border-blue-100">
-                                <Truck size={12} className="text-blue-500" />
-                                <span className="font-mono text-blue-700 font-medium text-xs truncate max-w-[120px]">{order.trackingNo}</span>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Items List */}
-                    <div className="space-y-2">
-                        {order.items.map((item) => (
-                            <div key={item.id} className="flex items-center gap-3 group/item">
-                                <div className="flex items-center justify-center bg-gray-50 border border-gray-200 text-gray-700 font-bold text-sm h-7 min-w-[2rem] rounded-md shadow-sm group-hover/item:border-blue-200 group-hover/item:bg-blue-50 transition-colors">
-                                    {item.quantity}
-                                </div>
-                                <div className={clsx("text-sm font-medium leading-tight pt-0.5 truncate", isPacked ? "text-gray-400" : "text-gray-700")}>
-                                    {item.productName}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-
-                {/* Right Section: Notes & Actions */}
-                <div className="w-full md:w-7/12 flex-shrink-0 mt-3 md:mt-0 flex flex-col md:flex-row items-stretch gap-3 md:pl-4 md:border-l md:border-gray-100">
-
-                    {/* Important Note Area */}
-                    {hasSpecialNote ? (
-                        <div className={clsx(
-                            "flex-1 border rounded-lg p-3 relative transition-all duration-300",
-                            isNoteChecked ? "bg-green-50/50 border-green-200 text-green-800" : "bg-amber-50 border-amber-300 shadow-[0_0_10px_rgba(251,191,36,0.2)] text-amber-900"
-                        )}>
-                            <div className="flex justify-between items-start gap-2 mb-2">
-                                <div className="flex items-center gap-1.5 font-bold text-xs uppercase tracking-wide">
-                                    <AlertTriangle size={14} className={isNoteChecked ? "text-green-600" : "text-amber-600"} />
-                                    <span className={isNoteChecked ? "text-green-700" : "text-amber-800"}>หมายเหตุพิเศษ</span>
-                                </div>
-
-                                {/* Acknowledge Note Checkbox */}
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        onToggleNoteCheck(order.orderId);
-                                    }}
-                                    className={clsx(
-                                        "flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-md transition-all active:scale-95",
-                                        isNoteChecked ? "bg-green-100 text-green-700 hover:bg-green-200" : "bg-amber-100 text-amber-700 hover:bg-amber-200 border border-amber-300"
+                        <div
+                            className="bg-white rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden flex flex-col animate-in zoom-in-95 duration-200 border border-zinc-100/50"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <div className="p-6 sm:p-8 pb-0 flex justify-between items-start">
+                                <div>
+                                    <h3 className="text-2xl sm:text-3xl font-black text-zinc-900 tracking-tight leading-none">{order.customerName}</h3>
+                                    {order.phoneNumber && (
+                                        <p className="text-zinc-500 font-semibold mt-3 flex items-center gap-2 bg-zinc-50 inline-flex px-3 py-1.5 rounded-lg border border-zinc-100">
+                                            <Phone size={14} /> {order.phoneNumber}
+                                        </p>
                                     )}
-                                >
-                                    {isNoteChecked ? <CheckSquare size={14} /> : <Square size={14} />}
-                                    {isNoteChecked ? 'รับทราบแล้ว' : 'ติ๊กเพื่อรับทราบ'}
+                                </div>
+                                <button onClick={() => setIsModalOpen(false)} className="p-2.5 bg-zinc-100 hover:bg-zinc-200 hover:rotate-90 text-zinc-600 rounded-full transition-all">
+                                    <X size={20} />
                                 </button>
                             </div>
 
-                            <p className={clsx("text-sm font-medium leading-snug break-words", isNoteChecked && "opacity-80")}>
-                                {order.note}
-                            </p>
-                        </div>
-                    ) : (
-                        <div className="flex-1 flex items-center justify-center border border-dashed border-gray-200 rounded-lg p-3 bg-gray-50/30 text-gray-400">
-                            <span className="text-xs font-medium bg-gray-100 px-2 py-1 rounded">ไม่มีหมายเหตุ</span>
-                        </div>
-                    )}
+                            <div className="p-6 sm:p-8 space-y-8 overflow-y-auto max-h-[75vh]">
 
-                </div>
-            </div>
-
-            {/* Expand Indicator */}
-            <div className="absolute bottom-0 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
-                <ChevronDown size={14} className="text-gray-300" />
-            </div>
-
-            {/* Detailed View (Expanded Context) */}
-            {isExpanded && (
-                <div onClick={(e) => e.stopPropagation()} className="cursor-auto bg-gray-50/80 border-t border-gray-100 p-4 pl-6 animate-in slide-in-from-top-2 duration-200 shadow-inner">
-                    <h4 className="text-sm font-bold text-gray-700 flex items-center gap-2 mb-4">
-                        <Info size={16} className="text-blue-500" /> ข้อมูลออเดอร์ทั้งหมด
-                    </h4>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm mb-4">
-                        <div className="flex flex-col">
-                            <span className="font-semibold text-gray-500 mb-0.5">เบอร์โทรศัพท์</span>
-                            <span className="text-gray-800 font-medium">{order.phoneNumber || '-'}</span>
-                        </div>
-                        <div className="flex flex-col col-span-1 md:col-span-2 lg:col-span-2">
-                            <span className="font-semibold text-gray-500 mb-0.5">ที่อยู่</span>
-                            <span className="text-gray-800 leading-snug">{order.address || '-'}</span>
-                        </div>
-                        <div className="flex flex-col">
-                            <span className="font-semibold text-gray-500 mb-0.5">สถานะการชำระเงิน</span>
-                            <span className={clsx("font-medium", order.paymentStatus === 'Paid' || order.paymentStatus === 'ชำระเงินแล้ว' ? 'text-green-600' : 'text-red-600')}>
-                                {order.paymentStatus || '-'}
-                            </span>
-                        </div>
-                    </div>
-
-                    <div className="mt-4 pt-4 border-t border-gray-200/60">
-                        <h5 className="font-semibold text-gray-400 text-xs mb-3 uppercase tracking-wider">ข้อมูลดิบ (Raw Details)</h5>
-                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 text-xs">
-                            {Object.entries(order.rawDetails || {}).map(([key, value]) => (
-                                <div key={key} className="flex flex-col bg-white p-2 rounded border border-gray-100">
-                                    <span className="font-semibold text-gray-400 truncate" title={key}>{key}</span>
-                                    <span className="text-gray-700 break-words font-medium">{String(value || '-')}</span>
+                                {/* Items / Menu */}
+                                <div>
+                                    <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                                        <ListOrdered size={16} /> รายการสินค้า (เมนู)
+                                    </h4>
+                                    <div className="space-y-3 bg-zinc-50 p-5 rounded-2xl border border-zinc-100">
+                                        {order.items.map(item => (
+                                            <div key={item.id} className="flex items-center justify-between text-zinc-800 font-semibold">
+                                                <span className="text-base">{item.productName}</span>
+                                                <span className="font-bold text-zinc-900 bg-white border border-zinc-200 px-3 py-1 rounded-lg shadow-sm">
+                                                    x{item.quantity}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
-                            ))}
+
+                                <div className="space-y-6">
+                                    {/* Production Note Field */}
+                                    <div>
+                                        <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                                            <Edit3 size={14} /> โน้ตสั่งผลิต
+                                        </h4>
+                                        <div className="relative">
+                                            <input
+                                                className={clsx(
+                                                    "w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-medium text-gray-800 transition-all",
+                                                    status === 'shipped' ? "opacity-60 cursor-default" : "placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-black focus:border-black"
+                                                )}
+                                                placeholder={status === 'shipped' ? "" : "พิมพ์ข้อความให้ฝ่ายผลิต (ถ้ามี)..."}
+                                                value={prodNote}
+                                                readOnly={status === 'shipped'}
+                                                onChange={e => setProdNote(e.target.value)}
+                                                onBlur={() => status !== 'shipped' && onSaveProductionNote(order.orderId, prodNote)}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Missing Items Issue */}
+                                    <div>
+                                        <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                                            <AlertTriangle size={14} /> บันทึกของค้างส่ง / ปัญหา
+                                        </h4>
+                                        {status !== 'shipped' && !showMissingInput && !isPartial && (
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); setShowMissingInput(true); }}
+                                                className="px-4 py-2 border border-dashed border-gray-300 rounded-lg text-gray-500 text-sm font-medium hover:bg-gray-50 hover:text-black transition-colors flex items-center gap-2"
+                                            >
+                                                + เพิ่มบันทึกของค้างส่ง
+                                            </button>
+                                        )}
+                                        {status === 'shipped' && !isPartial && (
+                                            <p className="text-xs text-gray-400 italic">ไม่มีบันทึกของค้างส่ง</p>
+                                        )}
+                                        {(showMissingInput || isPartial) && (
+                                            <div className="flex flex-col gap-2">
+                                                <input
+                                                    className={clsx(
+                                                        "w-full border rounded-xl px-4 py-3 text-sm font-medium transition-all",
+                                                        status === 'shipped' ? "bg-zinc-50 border-zinc-200 text-zinc-500 cursor-default" : "bg-orange-50/50 border-orange-200 text-orange-900 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                                                    )}
+                                                    placeholder="เช่น ขาดพริก 2 กระปุก"
+                                                    readOnly={status === 'shipped'}
+                                                    autoFocus={!isPartial}
+                                                    value={missingNote}
+                                                    onChange={e => setMissingNote(e.target.value)}
+                                                />
+                                                {status !== 'shipped' && (
+                                                    <div className="flex gap-2">
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); onMarkPartial(order.orderId, missingNote); setShowMissingInput(false); }}
+                                                            className="bg-black hover:bg-gray-800 text-white font-medium px-4 py-2 rounded-lg text-xs transition-colors"
+                                                        >
+                                                            บันทึกค้างส่ง
+                                                        </button>
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); onMarkPartial(order.orderId, ''); setMissingNote(''); setShowMissingInput(false); }}
+                                                            className="px-4 py-2 border border-gray-200 hover:bg-gray-100 text-gray-600 font-medium rounded-lg text-xs transition-colors"
+                                                        >
+                                                            ยกเลิกสถานะค้างส่ง
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Address (Critical for packing, shouldn't be completely deleted, but minimalist) */}
+                                {order.address && (
+                                    <div>
+                                        <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                                            <MapPin size={16} /> ที่อยู่จัดส่ง
+                                        </h4>
+                                        <p className="text-zinc-700 font-medium leading-relaxed bg-zinc-50 p-5 rounded-2xl border border-zinc-100">
+                                            {order.address}
+                                        </p>
+                                    </div>
+                                )}
+
+                                {/* Note */}
+                                {hasNote && (
+                                    <div>
+                                        <h4 className="text-[10px] font-bold text-red-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+                                            <AlertCircle size={14} /> หมายเหตุพิเศษ
+                                        </h4>
+                                        <div className="p-4 rounded-xl border border-red-200 bg-red-50/50 text-red-900 font-semibold leading-relaxed text-sm">
+                                            {order.note}
+                                        </div>
+                                    </div>
+                                )}
+
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
-        </div>
+                )
+            }
+        </>
     );
 };
