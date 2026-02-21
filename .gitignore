@@ -1,0 +1,8 @@
+# .gitignore data-ex
+
+/data-ex
+node_modules/
+.next/
+.env
+.env.*
+.env.local
