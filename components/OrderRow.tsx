@@ -115,7 +115,7 @@ export const OrderRow: React.FC<OrderRowProps> = ({ order, onTogglePack, index }
                                     <AlertTriangle size={48} className="text-amber-900" />
                                 </div>
                                 <div className="flex items-center gap-1.5 text-amber-700 font-bold text-xs uppercase tracking-wide mb-1">
-                                    <AlertTriangle size={12} /> Note
+                                    <AlertTriangle size={12} /> หมายเหตุ
                                 </div>
                                 <p className="text-amber-900 text-sm font-medium leading-snug relative z-10 break-words">
                                     {order.note}

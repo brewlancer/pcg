@@ -5,7 +5,7 @@ import { parseExcel } from '../utils/excelParser';
 import { Order, OrderList, ParsedData, OrderItem } from '../utils/types';
 import { FileUpload } from './FileUpload';
 import { OrderRow } from './OrderRow';
-import { Printer, RefreshCw, Search, Box, Plus, Trash2, Edit2, FileText, ChevronLeft, ChevronRight, Menu, LogOut } from 'lucide-react';
+import { Printer, RefreshCw, Search, Box, Plus, Trash2, Edit2, FileText, ChevronLeft, ChevronRight, Menu, LogOut, Package, ClipboardList, CheckCircle2, Circle } from 'lucide-react';
 import { logout } from '../app/actions/auth';
 import { clsx } from 'clsx';
 
@@ -132,6 +132,12 @@ export default function Dashboard() {
     const packedCount = activeList ? activeList.orders.filter((o: Order) => o.packed).length : 0;
     const progress = activeList && activeList.orders.length > 0 ? (packedCount / activeList.orders.length) * 100 : 0;
 
+    // Calculate total items (sum of quantity from all summary objects)
+    const totalUnitsCount = useMemo(() => {
+        if (!activeList) return 0;
+        return Object.values(activeList.summary).reduce((sum, count) => sum + count, 0);
+    }, [activeList]);
+
     if (!isMounted) return null;
 
     return (
@@ -161,7 +167,7 @@ export default function Dashboard() {
 
                 {/* Lists Navigation */}
                 <div className="flex-1 overflow-y-auto p-2 space-y-1">
-                    {!isSidebarCollapsed && <div className="text-xs font-semibold text-gray-400 px-3 py-2 uppercase tracking-wider">Your Lists</div>}
+                    {!isSidebarCollapsed && <div className="text-xs font-semibold text-gray-400 px-3 py-2 uppercase tracking-wider">รายการของคุณ</div>}
 
                     {lists.map(list => (
                         <div
@@ -213,7 +219,7 @@ export default function Dashboard() {
                             isSidebarCollapsed ? "justify-center" : ""
                         )}>
                             <Plus size={20} />
-                            {!isSidebarCollapsed && "Add File"}
+                            {!isSidebarCollapsed && "เพิ่มไฟล์"}
                             <input
                                 type="file"
                                 className="hidden"
@@ -232,7 +238,7 @@ export default function Dashboard() {
                             isSidebarCollapsed ? "justify-center" : ""
                         )}>
                             <LogOut size={20} />
-                            {!isSidebarCollapsed && "Logout"}
+                            {!isSidebarCollapsed && "ออกจากระบบ"}
                         </button>
                     </form>
                 </div>
@@ -249,7 +255,7 @@ export default function Dashboard() {
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
                                 <input
                                     type="text"
-                                    placeholder="Search Order No, Customer..."
+                                    placeholder="ค้นหา รหัสออเดอร์, ชื่อลูกค้า..."
                                     value={searchQuery}
                                     onChange={e => setSearchQuery(e.target.value)}
                                     className="w-full pl-9 pr-4 py-2 border rounded-md text-sm focus:ring-2 focus:ring-blue-500 outline-none"
@@ -263,7 +269,7 @@ export default function Dashboard() {
                                     onChange={(e) => setSelectedSku(e.target.value)}
                                     className="px-2 py-1.5 rounded text-sm border bg-white max-w-[140px]"
                                 >
-                                    <option value="all">All SKUs</option>
+                                    <option value="all">สินค้าทั้งหมด</option>
                                     {activeList && Object.keys(activeList.summary).map(sku => (
                                         <option key={sku} value={sku}>{sku}</option>
                                     ))}
@@ -274,13 +280,13 @@ export default function Dashboard() {
                                         onClick={() => setFilterMode('all')}
                                         className={clsx("px-3 py-1 rounded text-xs font-medium transition-all", filterMode === 'all' ? "bg-white shadow text-blue-600" : "text-gray-500 hover:text-gray-700")}
                                     >
-                                        All
+                                        ทั้งหมด
                                     </button>
                                     <button
                                         onClick={() => setFilterMode('unpacked')}
                                         className={clsx("px-3 py-1 rounded text-xs font-medium transition-all", filterMode === 'unpacked' ? "bg-white shadow text-yellow-600" : "text-gray-500 hover:text-gray-700")}
                                     >
-                                        Pack
+                                        รอแพ็ค
                                     </button>
                                 </div>
 
@@ -298,8 +304,8 @@ export default function Dashboard() {
                         <div className="h-full flex flex-col items-center justify-center text-gray-400 space-y-4">
                             <div className="p-12 bg-white rounded-2xl shadow-sm border border-dashed border-gray-200 text-center">
                                 <Plus size={48} className="mx-auto text-gray-300 mb-4" />
-                                <h3 className="text-lg font-medium text-gray-800">No List Selected</h3>
-                                <p className="text-gray-500 mb-6">Select a list from the sidebar or upload a new one.</p>
+                                <h3 className="text-lg font-medium text-gray-800">ยังไม่ได้เลือกรายการ</h3>
+                                <p className="text-gray-500 mb-6">เลือกรายการจากแถบด้านซ้าย หรืออัปโหลดไฟล์ใหม่ขึ้นมา</p>
                             </div>
                         </div>
                     ) : (
@@ -307,11 +313,11 @@ export default function Dashboard() {
                             {/* List Header for Print */}
                             <div className="hidden print:block mb-8 border-b pb-4">
                                 <h1 className="text-2xl font-bold">{activeList.name}</h1>
-                                <p className="text-gray-500 text-sm">Created: {new Date(activeList.createdAt).toLocaleString()}</p>
+                                <p className="text-gray-500 text-sm">สร้างเมื่อ: {new Date(activeList.createdAt).toLocaleString()}</p>
                             </div>
 
                             {filteredOrders.length === 0 ? (
-                                <div className="text-center py-20 text-gray-400">No orders found.</div>
+                                <div className="text-center py-20 text-gray-400">ไม่พบออเดอร์ที่ค้นหา</div>
                             ) : (
                                 filteredOrders.map((order: Order, i: number) => (
                                     <OrderRow
@@ -330,32 +336,56 @@ export default function Dashboard() {
 
             {/* RIGHT Sidebar (Summary) */}
             {activeList && (
-                <aside className="w-80 bg-white border-l border-gray-200 p-4 print:hidden sticky top-0 h-screen overflow-y-auto hidden xl:block">
-                    <div className="mb-6">
-                        <h2 className="font-bold text-lg text-gray-800 mb-4">Packing Status</h2>
+                <aside className="w-80 bg-white border-l border-gray-200 p-4 print:hidden sticky top-0 h-screen overflow-y-auto hidden xl:block flex-shrink-0">
+
+                    <div className="mb-8">
+                        <h2 className="font-bold text-lg text-gray-800 mb-4 flex items-center gap-2">
+                            <ClipboardList className="text-blue-600" size={20} />
+                            ภาพรวมรายการ
+                        </h2>
+
+                        <div className="grid grid-cols-2 gap-3 mb-6">
+                            <div className="bg-blue-50/50 border border-blue-100 p-3 rounded-xl flex flex-col justify-center">
+                                <span className="text-xs text-blue-600 font-medium mb-1 flex items-center gap-1.5"><Box size={14} /> ออเดอร์ทั้งหมด</span>
+                                <span className="text-2xl font-bold text-blue-900">{activeList.orders.length}</span>
+                            </div>
+                            <div className="bg-purple-50/50 border border-purple-100 p-3 rounded-xl flex flex-col justify-center">
+                                <span className="text-xs text-purple-600 font-medium mb-1 flex items-center gap-1.5"><Package size={14} /> สินค้าทั้งหมด</span>
+                                <span className="text-2xl font-bold text-purple-900">{totalUnitsCount}</span>
+                            </div>
+                            <div className="bg-green-50/50 border border-green-100 p-3 rounded-xl flex flex-col justify-center">
+                                <span className="text-xs text-green-600 font-medium mb-1 flex items-center gap-1.5"><CheckCircle2 size={14} /> แพ็คแล้ว</span>
+                                <span className="text-2xl font-bold text-green-900">{packedCount}</span>
+                            </div>
+                            <div className="bg-orange-50/50 border border-orange-100 p-3 rounded-xl flex flex-col justify-center">
+                                <span className="text-xs text-orange-600 font-medium mb-1 flex items-center gap-1.5"><Circle size={14} /> รอแพ็ค</span>
+                                <span className="text-2xl font-bold text-orange-900">{activeList.orders.length - packedCount}</span>
+                            </div>
+                        </div>
 
                         <div className="mb-2 flex justify-between text-sm font-medium text-gray-600">
-                            <span>Progress</span>
+                            <span>ความคืบหน้า</span>
                             <span>{Math.round(progress)}%</span>
                         </div>
                         <div className="bg-gray-100 rounded-full h-3 overflow-hidden border border-gray-200 mb-2">
-                            <div className="bg-green-500 h-full transition-all duration-500" style={{ width: `${progress}%` }} />
+                            <div className="bg-blue-500 h-full transition-all duration-500" style={{ width: `${progress}%` }} />
                         </div>
-                        <p className="text-xs text-center text-gray-400">{packedCount} of {activeList.orders.length} packed</p>
                     </div>
 
                     <div>
-                        <h3 className="font-bold text-gray-700 flex items-center gap-2 mb-3 pb-2 border-b">
-                            <Box size={18} className="text-blue-500" /> Item Summary
+                        <h3 className="font-bold text-gray-700 flex items-center gap-2 mb-3 pb-2 border-b border-gray-100">
+                            <Box size={18} className="text-blue-500" /> สรุปจำนวนสินค้า (SKU)
                         </h3>
-                        <ul className="text-sm space-y-2">
-                            {Object.entries(activeList.summary).map(([sku, count]) => (
-                                <li key={sku} className="flex justify-between items-start">
-                                    <span className="text-gray-600 leading-tight flex-1 pr-2">{sku || 'Unknown'}</span>
-                                    <span className="font-mono font-bold bg-gray-100 px-2 py-0.5 rounded text-gray-800">{String(count)}</span>
-                                </li>
-                            ))}
-                        </ul>
+                        <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
+                            <ul className="text-sm space-y-2.5">
+                                {Object.entries(activeList.summary).map(([sku, count]) => (
+                                    <li key={sku} className="flex justify-between items-start group">
+                                        <span className="text-gray-600 leading-tight flex-1 pr-2 group-hover:text-gray-900 transition-colors">{sku || 'ไม่ระบุ'}</span>
+                                        <span className="font-mono font-bold bg-white border border-gray-200 px-2 py-0.5 rounded-md text-gray-800 shadow-sm">{String(count)}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
                     </div>
                 </aside>
             )}

@@ -15,33 +15,33 @@ export default function LoginPage() {
                         <Lock className="text-blue-600" size={24} />
                     </div>
                 </div>
-                <h1 className="text-2xl font-bold text-center text-gray-800 mb-6">PackList Login</h1>
+                <h1 className="text-2xl font-bold text-center text-gray-800 mb-6">เข้าสู่ระบบแพ็คของ</h1>
 
                 <form action={formAction} className="space-y-4">
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Username
+                            ชื่อผู้ใช้
                         </label>
                         <input
                             type="text"
                             name="username"
                             required
                             className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                            placeholder="Enter username..."
+                            placeholder="กรอกชื่อผู้ใช้..."
                             disabled={isPending}
                         />
                     </div>
 
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Password
+                            รหัสผ่าน
                         </label>
                         <input
                             type="password"
                             name="password"
                             required
                             className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                            placeholder="Enter password..."
+                            placeholder="กรอกรหัสผ่าน..."
                             disabled={isPending}
                         />
                     </div>
@@ -55,7 +55,7 @@ export default function LoginPage() {
                         disabled={isPending}
                         className="w-full bg-blue-600 text-white rounded-lg py-2 font-medium hover:bg-blue-700 transition-colors disabled:opacity-50"
                     >
-                        {isPending ? 'Logging in...' : 'Login'}
+                        {isPending ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบ'}
                     </button>
                 </form>
             </div>
